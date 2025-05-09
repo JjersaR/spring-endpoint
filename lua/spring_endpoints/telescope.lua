@@ -36,7 +36,6 @@ local function open_file(entry)
 			if entry.path:find(base_path, 1, true) == 1 then
 				-- Extraer la ruta del método
 				local method_path = entry.path:sub(#base_path + 1)
-				method_path = method_path:gsub("^/*", "/") -- Asegurar que comience con una barra
 
 				-- Capitalizar correctamente el método (por ejemplo, "get" -> "Get")
 				local capitalized_method = entry.method:sub(1, 1):upper() .. entry.method:sub(2):lower()
