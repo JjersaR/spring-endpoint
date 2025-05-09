@@ -11,28 +11,56 @@ local function extract_endpoints(file_path)
 		return endpoints
 	end
 
-	local class_base_path = "" -- Para almacenar la ruta base de la clase
-	local inside_class = false -- Para saber si estamos dentro de una clase con @RequestMapping
+	local class_base_path = ""
+	local inside_class = false
+
+	-- Función para extraer rutas de anotaciones complejas
+	local function extract_mapping_path(line)
+		-- Patrones para capturar diferentes formatos
+		local patterns = {
+			-- Formato: @GetMapping(value = "/path", ...)
+			'@%a+Mapping%s*%(%s*value%s*=%s*"([^"]+)"',
+			-- Formato: @GetMapping("/path")
+			'@%a+Mapping%s*%(%s*"([^"]+)"',
+			-- Formato: @GetMapping(path = "/path", ...)
+			'@%a+Mapping%s*%(%s*path%s*=%s*"([^"]+)"',
+		}
+
+		for _, pattern in ipairs(patterns) do
+			local path = line:match(pattern)
+			if path then
+				return path
+			end
+		end
+		return nil
+	end
 
 	for line in file:lines() do
-		-- Buscar @RequestMapping en la clase y guardar la ruta base
-		local class_path = line:match("@RequestMapping%s*%(?[\"']([^\"']+)[\"']?%)")
-		if class_path then
+		-- Buscar @RequestMapping en la clase
+		local class_path = extract_mapping_path(line)
+		if class_path and line:match("@RequestMapping") then
 			class_base_path = class_path
 			inside_class = true
 		end
 
-		-- Buscar métodos con @GetMapping, @PostMapping, etc.
-		local method, path = line:match("@(%a+)Mapping%s*%(?[\"']([^\"']+)[\"']?%)")
-		if method and path then
-			local full_path = (class_base_path ~= "" and class_base_path .. "/" .. path) or path
-			full_path = full_path:gsub("//", "/") -- Evitar doble slash
-			table.insert(endpoints, { method = method:upper(), path = full_path, file = file_path })
+		-- Buscar métodos con @*Mapping
+		local method = line:match("@(%a+)Mapping")
+		if method then
+			local path = extract_mapping_path(line)
+			if path then
+				local full_path = class_base_path ~= "" and class_base_path .. "/" .. path or path
+				full_path = full_path:gsub("//+", "/")
+				table.insert(endpoints, {
+					method = method:upper(),
+					path = full_path,
+					file = file_path,
+				})
+			end
 		end
 
 		-- Detectar si salimos de la clase
 		if inside_class and line:match("^}") then
-			class_base_path = "" -- Resetear la ruta base al salir de la clase
+			class_base_path = ""
 			inside_class = false
 		end
 	end

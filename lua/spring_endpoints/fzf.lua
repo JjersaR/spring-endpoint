@@ -27,9 +27,6 @@ local function open_file(entry)
 	if found_class ~= 0 then
 		local base_path = extract_request_mapping_value(found_class)
 		if base_path then
-			-- Normalizar rutas quitando "/" final de @RequestMapping si existe
-			base_path = base_path:gsub("/$", "")
-
 			-- Comparar la ruta base con el endpoint seleccionado
 			if entry.path:find(base_path, 1, true) == 1 then
 				-- Extraer la ruta del método
