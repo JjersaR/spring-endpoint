@@ -2,62 +2,66 @@ local fzf_lua = require("fzf-lua")
 local parser = require("spring_endpoints.parser")
 
 local function open_file(entry)
-	-- Abrir el archivo
 	vim.cmd("edit " .. entry.file)
 
-	-- Función para buscar texto plano en el archivo
-	local function search_plain_text(text)
-		vim.fn.cursor(1, 1) -- Empezar la búsqueda desde el inicio del archivo
-		local found_line = vim.fn.search(text, "w")
-		return found_line
+	-- Función para buscar texto exacto ignorando mayúsculas/minúsculas y espacios
+	local function search_mapping(method_pattern, path)
+		vim.fn.cursor(1, 1)
+		while true do
+			-- Buscar la anotación del método primero
+			local found = vim.fn.search(method_pattern, "W")
+			if found == 0 then
+				break
+			end
+
+			-- Verificar si la línea contiene la ruta
+			local line = vim.fn.getline(found):lower()
+			if line:find(path:lower(), 1, true) then
+				return found
+			end
+		end
+		return 0
 	end
 
-	-- Función para extraer el valor de la anotación @RequestMapping
-	local function extract_request_mapping_value(line)
-		local line_content = vim.fn.getline(line)
-		local value = line_content:match('@RequestMapping%("([^"]+)"')
-			or line_content:match('@RequestMapping%([^"]*"([^"]+)"')
-		return value
-	end
+	-- Construir patrones de búsqueda flexibles
+	local method_pattern = "@" .. entry.method:lower() .. "mapping"
+	local capitalized_method = entry.method:sub(1, 1):upper() .. entry.method:sub(2):lower()
 
-	-- Buscar la anotación @RequestMapping en la clase
-	local class_pattern = "@RequestMapping"
-	local found_class = search_plain_text(class_pattern)
+	-- 1. Primero buscar la ruta completa
+	local found_line = search_mapping(method_pattern, entry.path)
 
-	if found_class ~= 0 then
-		local base_path = extract_request_mapping_value(found_class)
-		if base_path then
-			-- Comparar la ruta base con el endpoint seleccionado
-			if entry.path:find(base_path, 1, true) == 1 then
-				-- Extraer la ruta del método
-				local method_path = entry.path:sub(#base_path + 1)
-				method_path = method_path:gsub("^/*", "/") -- Asegurar que comience con una barra
+	-- 2. Si no se encuentra, buscar ruta relativa
+	if found_line == 0 then
+		-- Buscar RequestMapping en la clase
+		vim.fn.cursor(1, 1)
+		local class_mapping = vim.fn.search("@RequestMapping", "w")
+		if class_mapping > 0 then
+			local line = vim.fn.getline(class_mapping):lower()
+			local base_path = line:match("[\"']([^\"']+)[\"']")
+			if base_path then
+				base_path = base_path:gsub("^/+", ""):gsub("/+$", "")
 
-				-- Capitalizar correctamente el método (por ejemplo, "get" -> "Get")
-				local capitalized_method = entry.method:sub(1, 1):upper() .. entry.method:sub(2):lower()
-
-				-- Construir el texto de búsqueda para el método
-				local method_text = "@" .. capitalized_method .. 'Mapping("' .. method_path .. '")'
-				local found_method = search_plain_text(method_text)
-
-				if found_method ~= 0 then
-					vim.fn.cursor(vim.fn.line("."), 1) -- Mover cursor al inicio de la línea
-					vim.api.nvim_command("normal! zz") -- Centrar la ventana en el cursor
-					return
+				-- Verificar si el endpoint comienza con la ruta base
+				if entry.path:lower():find(base_path, 1, true) == 1 then
+					local method_path = entry.path:sub(#base_path + 1):gsub("^/+", "")
+					found_line = search_mapping(method_pattern, method_path)
 				end
 			end
 		end
 	end
 
-	-- Si no se encuentra la anotación de la clase o no coincide la ruta base, buscar la ruta completa
-	local capitalized_method = entry.method:sub(1, 1):upper() .. entry.method:sub(2):lower()
-	local full_method_text = "@" .. capitalized_method .. 'Mapping("' .. entry.path .. '")'
-	local found_full_method = search_plain_text(full_method_text)
+	-- 3. Último intento: búsqueda menos estricta
+	if found_line == 0 then
+		vim.fn.cursor(1, 1)
+		found_line = vim.fn.search(entry.path:gsub("{[^}]+}", ".*"), "w")
+	end
 
-	if found_full_method ~= 0 then
-		vim.fn.cursor(vim.fn.line("."), 1) -- Mover cursor al inicio de la línea
-		vim.api.nvim_command("normal! zz") -- Centrar la ventana en el cursor
-		return
+	-- Mover cursor si se encontró
+	if found_line > 0 then
+		vim.fn.cursor(found_line, 1)
+		vim.api.nvim_command("normal! zz")
+	else
+		print("⚠️ The end point not Found.")
 	end
 end
 
